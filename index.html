@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>超級循環賽亂數分配系統 V20</title>
+    <title>超級循環賽亂數分配系統 V21</title>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <style>
         /* CSS reset & 基本設定 */
@@ -38,7 +38,7 @@
         .left-panel {
             width: 20%; /* 橫式預設寬度 2:8 */
             background-color: #f4f6f9;
-            /* 關鍵修改：縮小內距與元件間距 */
+            /* 縮小內距與元件間距 */
             padding: 10px; 
             display: flex;
             flex-direction: column;
@@ -184,7 +184,7 @@
         .right-panel {
             flex: 1; 
             background-color: #fff;
-            /* 關鍵修改：縮小內距 */
+            /* 縮小內距 */
             padding: 10px; 
             overflow-y: auto;
             position: relative;
@@ -197,7 +197,7 @@
             display: grid;
             /* 電腦版維持自動排列 */
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            /* 關鍵修改：縮小方框間距 */
+            /* 縮小方框間距 */
             gap: 10px; 
             padding-bottom: 50px;
         }
@@ -428,6 +428,7 @@
     const groupSelect = document.getElementById('groupCount');
     const appearancesSelect = document.getElementById('appearances');
 
+    // 填入 1-20 組
     for (let i = 1; i <= 20; i++) {
         let option = document.createElement('option');
         option.value = i;
@@ -436,6 +437,13 @@
         groupSelect.appendChild(option);
     }
 
+    // --- 加入 SOLO 選項 (在最頂端) ---
+    let soloOption = document.createElement('option');
+    soloOption.value = "SOLO";
+    soloOption.text = "SOLO";
+    appearancesSelect.appendChild(soloOption);
+
+    // 填入 1-10 次
     for (let i = 1; i <= 10; i++) {
         let option = document.createElement('option');
         option.value = i;
@@ -543,22 +551,74 @@
 
     startBtn.addEventListener('click', function() {
         const numGroups = parseInt(groupSelect.value);
-        const numAppearances = parseInt(appearancesSelect.value);
+        const appValue = appearancesSelect.value;
         
-        const totalSlots = numGroups * numAppearances;
-        if (totalSlots % 2 !== 0) {
-            errorMsg.style.display = 'block';
-            errorMsg.innerText = `無法配對：組別(${numGroups}) x 次數(${numAppearances}) = ${totalSlots} 席次 (奇數)。\n必須是偶數才能兩兩配對。`;
-            resultArea.innerHTML = '';
-            matchCountBadge.innerText = '';
-            return;
-        } else {
+        // 檢查是否為 SOLO 模式
+        if (appValue === 'SOLO') {
+            // SOLO 模式下不檢查偶數，直接生成亂數排序
             errorMsg.style.display = 'none';
-        }
+            generateSolo(numGroups);
+        } else {
+            // 一般對戰模式
+            const numAppearances = parseInt(appValue);
+            
+            const totalSlots = numGroups * numAppearances;
+            if (totalSlots % 2 !== 0) {
+                errorMsg.style.display = 'block';
+                errorMsg.innerText = `無法配對：組別(${numGroups}) x 次數(${numAppearances}) = ${totalSlots} 席次 (奇數)。\n必須是偶數才能兩兩配對。`;
+                resultArea.innerHTML = '';
+                matchCountBadge.innerText = '';
+                return;
+            } else {
+                errorMsg.style.display = 'none';
+            }
 
-        generateMatches(numGroups, numAppearances);
+            generateMatches(numGroups, numAppearances);
+        }
     });
 
+    // --- 生成 SOLO 排序 ---
+    function generateSolo(n) {
+        resultArea.innerHTML = '';
+        
+        // 建立組別陣列 [1, 2, ..., n]
+        let groups = [];
+        for(let i=1; i<=n; i++) {
+            groups.push(i);
+        }
+
+        // 洗牌
+        shuffleArray(groups);
+
+        matchCountBadge.innerText = `(SOLO 排序)`;
+
+        groups.forEach((groupId, index) => {
+            // 計算顏色
+            const hue = (index * 137.5) % 360; 
+            
+            const card = document.createElement('div');
+            card.className = 'match-card';
+            card.style.backgroundColor = `hsl(${hue}, 70%, 40%)`; 
+            
+            // SOLO 內容結構 (使用 group-name 以適應直式隱藏前綴後綴的 CSS)
+            card.innerHTML = `
+                <div class="match-number">#${index + 1}</div>
+                <span class="group-name"><span class="txt-prefix">第 </span>${groupId}<span class="txt-suffix"> 組</span></span>
+            `;
+
+            card.addEventListener('click', function() {
+                const isActive = this.classList.contains('active');
+                document.querySelectorAll('.match-card').forEach(c => c.classList.remove('active'));
+                if (!isActive) {
+                    this.classList.add('active');
+                }
+            });
+
+            resultArea.appendChild(card);
+        });
+    }
+
+    // --- 生成 對戰配對 ---
     function generateMatches(n, appearances) {
         resultArea.innerHTML = '';
         
