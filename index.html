@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>超級循環賽亂數分配系統 V14</title>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        /* CSS reset & 基本設定 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            height: 100%;
+            width: 100%;
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            overflow: hidden; /* 防止整體頁面捲動 */
+            touch-action: none; /* 防止拖曳時觸發瀏覽器預設捲動行為 */
+            background-color: #eee;
+        }
+
+        /* 主容器 */
+        .container {
+            display: flex;
+            height: 100vh; /* fallback */
+            height: 100dvh; /* Dynamic Viewport Height */
+            width: 100vw;
+            margin: 0 auto;
+        }
+
+        /* 左側控制區 (設定區) */
+        .left-panel {
+            width: 20%; /* 橫式預設寬度 2:8 */
+            background-color: #f4f6f9;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            min-width: 0; /* 允許縮到最小 */
+            z-index: 2;
+        }
+
+        /* 標題樣式 */
+        h2 {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+            white-space: nowrap; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* 表單元素樣式 */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: bold;
+            color: #555;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        select, input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 10px;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* --- 存檔區樣式 (電腦版) --- */
+        .save-controls {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 20px;
+            border: 2px solid #ddd; 
+            box-shadow: 0 2px 0 #ddd;
+            margin-top: auto; /* 推到底部 */
+        }
+
+        .save-controls input {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            text-align: center;
+            height: 35px;
+        }
+
+        .btn-save {
+            width: 100%;
+            background-color: #1cb0f6;
+            color: white;
+            border: none;
+            border-bottom: 2px solid #148bc2;
+            padding: 5px 0;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.9rem;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 0; 
+            transition: all 0.1s;
+        }
+
+        .btn-save:hover {
+            background-color: #1899d6;
+        }
+
+        .btn-save:active {
+            transform: translateY(2px);
+            border-bottom-width: 0;
+        }
+
+        /* 可拖曳分隔線 (Resizer) */
+        .resizer {
+            background-color: #ccc;
+            z-index: 10;
+            flex-shrink: 0;
+            transition: background 0.2s;
+            background-clip: content-box; 
+        }
+
+        .resizer:hover, .resizer.active {
+            background-color: #007bff;
+        }
+
+        /* 橫式預設樣式 */
+        .resizer {
+            width: 15px; 
+            margin: 0 -5px; 
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            cursor: col-resize;
+        }
+
+        /* 右側結果區 */
+        .right-panel {
+            flex: 1; 
+            background-color: #fff;
+            padding: 20px;
+            overflow-y: auto;
+            position: relative;
+            z-index: 1;
+            min-width: 0; 
+        }
+
+        /* 結果顯示區域 Grid */
+        #result-area {
+            display: grid;
+            /* 電腦版維持自動排列 */
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            padding-bottom: 50px;
+        }
+
+        /* 對戰卡片樣式 (預設 - 電腦版/橫式) */
+        .match-card {
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 1.1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            display: flex;
+            justify-content: center; /* 水平置中 */
+            align-items: center;     /* 垂直置中 */
+            position: relative;
+            border: 3px solid transparent; 
+            overflow: hidden; 
+        }
+
+        .match-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .match-card.active {
+            border-color: #ffe600;
+            box-shadow: 0 0 15px rgba(255, 230, 0, 0.6);
+            transform: scale(1.02);
+            z-index: 10;
+            font-weight: bold;
+        }
+        
+        .match-card span {
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            white-space: nowrap; 
+        }
+        
+        /* 預設絕對定位的編號 (橫式用) */
+        .match-number {
+            position: absolute;
+            top: 5px;
+            left: 8px;
+            font-size: 0.8em; 
+            opacity: 0.8;
+            font-weight: normal;
+        }
+
+        .error-msg {
+            color: #d9534f;
+            background: #f9d6d5;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        /* 響應式設計 (直式螢幕 / 手機) */
+        @media (max-width: 768px), (orientation: portrait) {
+            .container {
+                flex-direction: column;
+                width: 100vw;
+                height: 100dvh;
+            }
+
+            .right-panel {
+                order: 1;
+                width: 100% !important;
+                /* 4:9 比例 (9/13 ≈ 69.23%) */
+                height: 69.23%; 
+                flex: none; 
+                border-bottom: 1px solid #ccc;
+            }
+
+            .resizer {
+                order: 2;
+                width: 100%;
+                height: 20px;
+                margin: -5px 0;
+                border-top: 5px solid transparent;
+                border-bottom: 5px solid transparent;
+                border-left: none;
+                border-right: none;
+                cursor: row-resize;
+            }
+
+            .left-panel {
+                order: 3; 
+                width: 100% !important;
+                height: auto;
+                flex: 1; 
+                border-right: none;
+                border-top: 1px solid #ddd;
+            }
+
+            /* 直式螢幕：1x1 配置 */
+            #result-area {
+                grid-template-columns: 1fr;
+            }
+            
+            /* --- 直式垂直排列配置與單行行距 --- */
+            .match-card {
+                flex-direction: column;
+                justify-content: center;
+                font-size: clamp(1rem, 5vw, 1.5rem); 
+                padding: 10px;
+                gap: 0; 
+                line-height: 1.2; 
+            }
+            
+            .match-number {
+                position: static; 
+                margin-bottom: 0; 
+                font-size: 0.8em;
+                opacity: 0.7;
+                line-height: 1.2;
+            }
+            
+            .match-card span {
+                width: 100%;
+                text-align: center;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin: 0 !important; 
+                line-height: 1.2;
+            }
+            
+            /* --- 關鍵修改：手機版存檔區樣式調整 (上下配置) --- */
+            .save-controls {
+                display: flex !important;
+                flex-direction: column; /* 改為垂直排列 */
+                gap: 10px; /* 增加間距 */
+                margin-top: 15px; 
+                margin-bottom: 5px;
+            }
+            .save-controls input {
+                width: 100%;
+                margin-right: 0;
+            }
+            .btn-save {
+                width: 100%;
+                flex: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="mainContainer">
+    <div class="left-panel" id="leftPanel">
+        <h2>賽事設定</h2>
+        
+        <div class="form-group">
+            <label for="groupCount">組別數量 (1-20組)</label>
+            <select id="groupCount">
+                </select>
+        </div>
+
+        <div class="form-group">
+            <label for="appearances">出場次數 (1-10次)</label>
+            <select id="appearances">
+                </select>
+        </div>
+
+        <button id="startBtn">開始配對</button>
+        <div id="errorMsg" class="error-msg"></div>
+        
+        <div class="save-controls">
+            <input type="text" id="classInput" placeholder="班級 (例如 701)">
+            <button class="btn-save" onclick="saveImage()">另存圖片</button>
+        </div>
+        
+        <div style="margin-top: 15px; font-size: 0.8rem; color: #666;">
+            <p>操作說明：</p>
+            <ul style="padding-left: 20px;">
+                <li>拖曳分隔線可調整區域大小。</li>
+                <li>點擊場次可標記進行中（單選）。</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="resizer" id="dragMe"></div>
+
+    <div class="right-panel" id="rightPanel">
+        <h2>配對結果 <span id="matchCountBadge" style="font-size:0.8rem; color:#666; font-weight:normal;"></span></h2>
+        <div id="result-area">
+            <p style="color: #888; grid-column: 1 / -1;">請點擊「開始配對」。</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 1. 初始化下拉選單 ---
+    const groupSelect = document.getElementById('groupCount');
+    const appearancesSelect = document.getElementById('appearances');
+
+    for (let i = 1; i <= 20; i++) {
+        let option = document.createElement('option');
+        option.value = i;
+        option.text = `第 ${i} 組`;
+        if(i === 7) option.selected = true; // 預設 7 組
+        groupSelect.appendChild(option);
+    }
+
+    for (let i = 1; i <= 10; i++) {
+        let option = document.createElement('option');
+        option.value = i;
+        option.text = `${i} 次`;
+        if(i === 2) option.selected = true; // 預設 2 次
+        appearancesSelect.appendChild(option);
+    }
+
+    // --- 2. 拖曳調整視窗功能 (支援觸控 & 直式/橫式自動切換) ---
+    const resizer = document.getElementById('dragMe');
+    const leftPanel = document.getElementById('leftPanel');
+    const rightPanel = document.getElementById('rightPanel');
+    const container = document.getElementById('mainContainer');
+
+    // 狀態變數
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startSize = 0; 
+
+    // 統一開始事件 (Mouse & Touch)
+    const startResize = function(e) {
+        isDragging = true;
+        resizer.classList.add('active');
+        document.body.style.userSelect = 'none';
+
+        const direction = window.getComputedStyle(container).flexDirection;
+        
+        if (e.type === 'touchstart') {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+        } else {
+            startX = e.clientX;
+            startY = e.clientY;
+        }
+
+        if (direction === 'column') {
+            document.body.style.cursor = 'row-resize';
+            startSize = rightPanel.getBoundingClientRect().height;
+        } else {
+            document.body.style.cursor = 'col-resize';
+            startSize = leftPanel.getBoundingClientRect().width;
+        }
+
+        document.addEventListener('mousemove', moveResize);
+        document.addEventListener('mouseup', stopResize);
+        document.addEventListener('touchmove', moveResize, { passive: false });
+        document.addEventListener('touchend', stopResize);
+    };
+
+    // 統一移動事件
+    const moveResize = function(e) {
+        if (!isDragging) return;
+        
+        if(e.type === 'touchmove') e.preventDefault();
+
+        let clientX, clientY;
+        if (e.type === 'touchmove') {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        const direction = window.getComputedStyle(container).flexDirection;
+        const containerRect = container.getBoundingClientRect();
+
+        if (direction === 'column') {
+            const dy = clientY - startY;
+            const newHeight = ((startSize + dy) / containerRect.height) * 100;
+            if (newHeight >= 0 && newHeight <= 100) {
+                rightPanel.style.height = `${newHeight}%`;
+            }
+        } else {
+            const dx = clientX - startX;
+            const newWidth = ((startSize + dx) / containerRect.width) * 100;
+            if (newWidth >= 0 && newWidth <= 100) {
+                leftPanel.style.width = `${newWidth}%`;
+            }
+        }
+    };
+
+    // 統一結束事件
+    const stopResize = function() {
+        isDragging = false;
+        resizer.classList.remove('active');
+        document.body.style.removeProperty('user-select');
+        document.body.style.removeProperty('cursor');
+        
+        document.removeEventListener('mousemove', moveResize);
+        document.removeEventListener('mouseup', stopResize);
+        document.removeEventListener('touchmove', moveResize);
+        document.removeEventListener('touchend', stopResize);
+    };
+
+    resizer.addEventListener('mousedown', startResize);
+    resizer.addEventListener('touchstart', startResize);
+
+    // --- 3. 配對邏輯核心 ---
+    const startBtn = document.getElementById('startBtn');
+    const resultArea = document.getElementById('result-area');
+    const errorMsg = document.getElementById('errorMsg');
+    const matchCountBadge = document.getElementById('matchCountBadge');
+
+    startBtn.addEventListener('click', function() {
+        const numGroups = parseInt(groupSelect.value);
+        const numAppearances = parseInt(appearancesSelect.value);
+        
+        const totalSlots = numGroups * numAppearances;
+        if (totalSlots % 2 !== 0) {
+            errorMsg.style.display = 'block';
+            errorMsg.innerText = `無法配對：組別(${numGroups}) x 次數(${numAppearances}) = ${totalSlots} 席次 (奇數)。\n必須是偶數才能兩兩配對。`;
+            resultArea.innerHTML = '';
+            matchCountBadge.innerText = '';
+            return;
+        } else {
+            errorMsg.style.display = 'none';
+        }
+
+        generateMatches(numGroups, numAppearances);
+    });
+
+    function generateMatches(n, appearances) {
+        resultArea.innerHTML = '';
+        
+        let pool = [];
+        for (let g = 1; g <= n; g++) {
+            for (let a = 0; a < appearances; a++) {
+                pool.push(g);
+            }
+        }
+
+        let matches = [];
+        let isValid = false;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 1000; 
+
+        while (!isValid && attempts < MAX_ATTEMPTS) {
+            attempts++;
+            let currentPool = shuffleArray([...pool]);
+            let tempMatches = [];
+            let possible = true;
+
+            for (let i = 0; i < currentPool.length; i += 2) {
+                let p1 = currentPool[i];
+                let p2 = currentPool[i+1];
+
+                if (p1 === p2) {
+                    possible = false;
+                    break; 
+                }
+                tempMatches.push({ p1: p1, p2: p2 });
+            }
+
+            if (possible) {
+                matches = tempMatches;
+                isValid = true;
+            }
+        }
+
+        if (!isValid) {
+            errorMsg.style.display = 'block';
+            errorMsg.innerText = "配對失敗：無法在限制內產生不重複對戰，請重試一次。";
+            return;
+        }
+
+        matches = optimizeSchedule(matches);
+
+        matchCountBadge.innerText = `(共 ${matches.length} 場)`;
+        const batchSize = Math.max(1, Math.floor(n / 2));
+
+        matches.forEach((match, index) => {
+            const batchIndex = Math.floor(index / batchSize);
+            const hue = (batchIndex * 137.5) % 360; 
+            
+            const card = document.createElement('div');
+            card.className = 'match-card';
+            card.style.backgroundColor = `hsl(${hue}, 70%, 40%)`; 
+            
+            card.innerHTML = `
+                <div class="match-number">#${index + 1}</div>
+                <span>第 ${match.p1} 組</span>
+                <span style="margin: 0 5px; opacity: 0.7; font-size: 0.8em;">VS</span>
+                <span>第 ${match.p2} 組</span>
+            `;
+
+            card.addEventListener('click', function() {
+                const isActive = this.classList.contains('active');
+                document.querySelectorAll('.match-card').forEach(c => c.classList.remove('active'));
+                if (!isActive) {
+                    this.classList.add('active');
+                }
+            });
+
+            resultArea.appendChild(card);
+        });
+    }
+
+    function optimizeSchedule(initialMatches) {
+        let optimized = [];
+        let remaining = [...initialMatches];
+        
+        const hasConflict = (matchA, matchB) => {
+            if (!matchA || !matchB) return false;
+            return matchA.p1 === matchB.p1 || matchA.p1 === matchB.p2 ||
+                   matchA.p2 === matchB.p1 || matchA.p2 === matchB.p2;
+        };
+
+        while (remaining.length > 0) {
+            let lastMatch = optimized.length > 0 ? optimized[optimized.length - 1] : null;
+            let foundIndex = -1;
+
+            for (let i = 0; i < remaining.length; i++) {
+                if (!hasConflict(remaining[i], lastMatch)) {
+                    foundIndex = i;
+                    break;
+                }
+            }
+
+            if (foundIndex === -1) {
+                foundIndex = 0;
+            }
+
+            optimized.push(remaining[foundIndex]);
+            remaining.splice(foundIndex, 1);
+        }
+
+        return optimized;
+    }
+
+    function shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    // --- 另存圖片功能 (全螢幕 + 左下角浮水印) ---
+    function saveImage() {
+        const classInput = document.getElementById('classInput');
+        const classVal = classInput.value.trim();
+        
+        // 1. 決定浮水印文字與檔名
+        let watermarkText = "";
+        let fileName = "";
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const dateStr = `${y}${m}${d}`;
+
+        if (classVal) {
+            watermarkText = classVal;
+            fileName = classVal;
+        } else {
+            watermarkText = dateStr;
+            fileName = dateStr;
+        }
+
+        // 2. 擷取整個 documentElement (含捲動內容)
+        const element = document.documentElement;
+
+        html2canvas(document.body, {
+            scale: 2, // 高解析度
+            windowWidth: element.scrollWidth,
+            windowHeight: element.scrollHeight,
+            x: 0,
+            y: 0,
+            onclone: function(clonedDoc) {
+                const clonedBody = clonedDoc.body;
+                
+                // 強制展開所有可能捲動的容器，確保截圖完整
+                const rightPanel = clonedDoc.querySelector('.right-panel');
+                const leftPanel = clonedDoc.querySelector('.left-panel');
+                const container = clonedDoc.querySelector('.container');
+                const html = clonedDoc.documentElement;
+                
+                // 讓高度自動延展
+                if (html) html.style.height = 'auto';
+                clonedBody.style.height = 'auto';
+                
+                if(container) {
+                    container.style.height = 'auto';
+                    container.style.overflow = 'visible';
+                }
+                if(rightPanel) {
+                    rightPanel.style.height = 'auto';
+                    rightPanel.style.overflow = 'visible';
+                }
+                if(leftPanel) {
+                    leftPanel.style.height = 'auto';
+                    leftPanel.style.overflow = 'visible';
+                }
+
+                // 3. 建立浮水印 div (左下角)
+                const watermark = clonedDoc.createElement('div');
+                watermark.innerText = watermarkText;
+                watermark.style.position = 'fixed'; // 使用 fixed 確保在視窗左下，或用 absolute 定位在 body 底部
+                // 由於我們將 height 設為 auto，absolute bottom 0 會在整個長頁面的最下方
+                watermark.style.position = 'absolute'; 
+                watermark.style.bottom = '20px';
+                watermark.style.left = '20px';
+                watermark.style.fontSize = '3rem'; 
+                watermark.style.color = 'rgba(0, 0, 0, 0.3)'; 
+                watermark.style.fontWeight = 'bold';
+                watermark.style.zIndex = '9999';
+                watermark.style.pointerEvents = 'none';
+                
+                clonedBody.appendChild(watermark);
+            }
+        }).then(canvas => {
+            const link = document.createElement('a');
+            link.download = fileName + ".png";
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        });
+    }
+</script>
+
+</body>
+</html>
