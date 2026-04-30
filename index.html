@@ -618,52 +618,123 @@
         });
     }
 
-    // --- 生成 對戰配對 ---
+    // 計算排程成本 (包含各種懲罰機制)
+    function calculateCost(slots, n, targetGap) {
+        let cost = 0;
+        let matchSet = new Set();
+        let lastPlayed = new Array(n + 1).fill(-999);
+
+        for (let i = 0; i < slots.length; i += 2) {
+            let p1 = slots[i];
+            let p2 = slots[i+1];
+            let matchIndex = i / 2;
+
+            // 1. 絕對不可自我對戰 (強烈懲罰)
+            if (p1 === p2) {
+                cost += 1000000; 
+            } else {
+                // 2. 對戰對象盡可能不同 (若重複對戰給予懲罰)
+                let minP = Math.min(p1, p2);
+                let maxP = Math.max(p1, p2);
+                let matchKey = minP + "-" + maxP;
+                if (matchSet.has(matchKey)) {
+                    cost += 3000; 
+                }
+                matchSet.add(matchKey);
+            }
+
+            // 3. 出場順序盡可能分散，不可連續
+            let gapP1 = matchIndex - lastPlayed[p1];
+            let gapP2 = matchIndex - lastPlayed[p2];
+
+            // 連續出場給予嚴重懲罰，以盡量逼迫演算法尋找無連續的解
+            if (gapP1 === 1) cost += 5000; 
+            else if (gapP1 < targetGap) cost += (targetGap - gapP1) * 10;
+
+            if (gapP2 === 1) cost += 5000;
+            else if (gapP2 < targetGap) cost += (targetGap - gapP2) * 10;
+
+            lastPlayed[p1] = matchIndex;
+            lastPlayed[p2] = matchIndex;
+        }
+        return cost;
+    }
+
+    // --- 生成 對戰配對 (最佳化演算法) ---
     function generateMatches(n, appearances) {
         resultArea.innerHTML = '';
         
-        let pool = [];
-        for (let g = 1; g <= n; g++) {
-            for (let a = 0; a < appearances; a++) {
-                pool.push(g);
-            }
-        }
+        let bestSlots = [];
+        let bestCost = Infinity;
+        let targetGap = Math.max(1, Math.floor(n / 2)); // 預期最佳出場間距
 
-        let matches = [];
-        let isValid = false;
-        let attempts = 0;
-        const MAX_ATTEMPTS = 1000; 
-
-        while (!isValid && attempts < MAX_ATTEMPTS) {
-            attempts++;
-            let currentPool = shuffleArray([...pool]);
-            let tempMatches = [];
-            let possible = true;
-
-            for (let i = 0; i < currentPool.length; i += 2) {
-                let p1 = currentPool[i];
-                let p2 = currentPool[i+1];
-
-                if (p1 === p2) {
-                    possible = false;
-                    break; 
+        // 多次重啟爬山演算法以避免陷入局部最佳解
+        for (let restart = 0; restart < 10; restart++) {
+            let slots = [];
+            for (let g = 1; g <= n; g++) {
+                for (let a = 0; a < appearances; a++) {
+                    slots.push(g);
                 }
-                tempMatches.push({ p1: p1, p2: p2 });
+            }
+            shuffleArray(slots);
+
+            let currentCost = calculateCost(slots, n, targetGap);
+            let noImprovementCount = 0;
+            const MAX_ITER = 30000; // 迭代次數
+
+            for (let iter = 0; iter < MAX_ITER; iter++) {
+                if (currentCost === 0) break; // 找到完美無瑕的排程
+
+                // 隨機選取兩個位置交換
+                let idx1 = Math.floor(Math.random() * slots.length);
+                let idx2 = Math.floor(Math.random() * slots.length);
+
+                if (slots[idx1] === slots[idx2]) continue;
+
+                // 暫時交換
+                let temp = slots[idx1];
+                slots[idx1] = slots[idx2];
+                slots[idx2] = temp;
+
+                let newCost = calculateCost(slots, n, targetGap);
+
+                if (newCost <= currentCost) {
+                    // 若有進步或維持現狀（利於在平坦區移動），則採用新排程
+                    currentCost = newCost;
+                    noImprovementCount = 0;
+                } else {
+                    // 否則復原交換
+                    temp = slots[idx1];
+                    slots[idx1] = slots[idx2];
+                    slots[idx2] = temp;
+                    noImprovementCount++;
+                }
+
+                // 長時間無法最佳化則提早跳出此輪，節省運算效能
+                if (noImprovementCount > 3000) break;
             }
 
-            if (possible) {
-                matches = tempMatches;
-                isValid = true;
+            if (currentCost < bestCost) {
+                bestCost = currentCost;
+                bestSlots = [...slots];
             }
+
+            // 若成本極低，代表已經是極度分散且無重複的完美解，可提早收斂
+            if (bestCost < 1000) break; 
         }
 
-        if (!isValid) {
+        // 若最後最佳解的成本大於百萬，代表在現有設定下必定會發生自己打自己的狀況
+        if (bestCost >= 1000000) {
             errorMsg.style.display = 'block';
-            errorMsg.innerText = "配對失敗：無法在限制內產生不重複對戰，請重試一次。";
+            errorMsg.innerText = "配對失敗：無法在限制內產生不包含自己打自己的對戰排程，請調整次數或組數。";
             return;
         }
 
-        matches = optimizeSchedule(matches);
+        // 將陣列轉回比賽形式
+        let matches = [];
+        for (let i = 0; i < bestSlots.length; i += 2) {
+            matches.push({ p1: bestSlots[i], p2: bestSlots[i+1] });
+        }
 
         matchCountBadge.innerText = `(共 ${matches.length} 場)`;
         const batchSize = Math.max(1, Math.floor(n / 2));
@@ -694,38 +765,6 @@
 
             resultArea.appendChild(card);
         });
-    }
-
-    function optimizeSchedule(initialMatches) {
-        let optimized = [];
-        let remaining = [...initialMatches];
-        
-        const hasConflict = (matchA, matchB) => {
-            if (!matchA || !matchB) return false;
-            return matchA.p1 === matchB.p1 || matchA.p1 === matchB.p2 ||
-                   matchA.p2 === matchB.p1 || matchA.p2 === matchB.p2;
-        };
-
-        while (remaining.length > 0) {
-            let lastMatch = optimized.length > 0 ? optimized[optimized.length - 1] : null;
-            let foundIndex = -1;
-
-            for (let i = 0; i < remaining.length; i++) {
-                if (!hasConflict(remaining[i], lastMatch)) {
-                    foundIndex = i;
-                    break;
-                }
-            }
-
-            if (foundIndex === -1) {
-                foundIndex = 0;
-            }
-
-            optimized.push(remaining[foundIndex]);
-            remaining.splice(foundIndex, 1);
-        }
-
-        return optimized;
     }
 
     function shuffleArray(array) {
