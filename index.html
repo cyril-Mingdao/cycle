@@ -382,7 +382,7 @@
 
 <div class="container" id="mainContainer">
     <div class="left-panel" id="leftPanel">
-        <h2>賽事設定</h2>
+        <h2 id="settingsTitle" style="cursor: pointer;">賽事設定</h2>
         
         <div class="form-group">
             <label for="groupCount">組別數量 (1-20組)</label>
@@ -424,6 +424,12 @@
 </div>
 
 <script>
+    // --- 新增功能：觸擊標題複製文字 ---
+    document.getElementById('settingsTitle').addEventListener('click', function() {
+        const textToCopy = "chrome://settings/help";
+        navigator.clipboard.writeText(textToCopy);
+    });
+
     // --- 1. 初始化下拉選單 ---
     const groupSelect = document.getElementById('groupCount');
     const appearancesSelect = document.getElementById('appearances');
